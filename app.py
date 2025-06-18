@@ -31,46 +31,78 @@ def load_known_faces():
                 if encoding:
                     known_face_encodings.append(encoding[0])
                     known_face_names.append(f"{row['ID']} - {row['Name']}")
-    
+
     return known_face_encodings, known_face_names
 
 known_face_encodings, known_face_names = load_known_faces()
 
-# Mark attendance in Excel
+# Mark attendance only once per hour
 def mark_attendance(name, person_id):
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df = pd.DataFrame([[person_id, name, now]], columns=["ID", "Name", "Time"])
+    now = datetime.datetime.now()
+    current_hour = now.replace(minute=0, second=0, microsecond=0)
 
     if os.path.exists(ATTENDANCE_FILE):
-        existing_df = pd.read_excel(ATTENDANCE_FILE)
-        updated_df = pd.concat([existing_df, df], ignore_index=True)
-        updated_df.to_excel(ATTENDANCE_FILE, index=False)
+        attendance_df = pd.read_excel(ATTENDANCE_FILE)
+        attendance_df['Time'] = pd.to_datetime(attendance_df['Time'])
+
+        recent_entries = attendance_df[
+            (attendance_df['ID'] == person_id) &
+            (attendance_df['Time'] >= current_hour)
+        ]
+
+        if not recent_entries.empty:
+            return
+
+        new_entry = pd.DataFrame([[person_id, name, now.strftime("%Y-%m-%d %H:%M:%S")]], columns=["ID", "Name", "Time"])
+        attendance_df = pd.concat([attendance_df, new_entry], ignore_index=True)
+        attendance_df.to_excel(ATTENDANCE_FILE, index=False)
+
     else:
-        df.to_excel(ATTENDANCE_FILE, index=False)
+        new_entry = pd.DataFrame([[person_id, name, now.strftime("%Y-%m-%d %H:%M:%S")]], columns=["ID", "Name", "Time"])
+        new_entry.to_excel(ATTENDANCE_FILE, index=False)
 
-# Tkinter GUI Setup
+# Tkinter UI Setup
 root = tk.Tk()
-root.title("Facial Recognition Attendance System")
-root.geometry("1000x600")
-root.configure(bg="white")
+root.title("Face Recognition Attendance System")
+root.attributes('-fullscreen', True)
 
-# UI Layout
-video_label = Label(root)
-video_label.grid(row=0, column=0, padx=10, pady=10, rowspan=5)
+# Header
+header = tk.Frame(root, bg="black", height=60)
+header.pack(fill="x")
 
-frame_right = tk.Frame(root, bg="white")
-frame_right.grid(row=0, column=1, padx=20, pady=10, sticky="nw")
+header_label = tk.Label(header, text="Face Recognition Attendance System", fg="white", bg="black", font=("Sans", 24, "bold"))
+header_label.pack(pady=10)
 
-Label(frame_right, text="📌 Detected Details", font=("Arial", 16, "bold"), bg="white").grid(row=0, column=0, sticky="w", pady=5)
+# Body Frame
+body_frame = tk.Frame(root, bg="white")
+body_frame.pack(expand=True, fill="both")
 
-name_label = Label(frame_right, text="Name: -", font=("Arial", 14), bg="white")
-name_label.grid(row=1, column=0, sticky="w")
+# Fixed camera size
+camera_frame = tk.Frame(body_frame, bg="white")
+camera_frame.place(relx=0.5, rely=0.4, anchor="center")
 
-id_label = Label(frame_right, text="ID: -", font=("Arial", 14), bg="white")
-id_label.grid(row=2, column=0, sticky="w")
+video_label = Label(camera_frame, bg="black", width=640, height=480)
+video_label.pack()
 
-time_label = Label(frame_right, text="Timestamp: -", font=("Arial", 14), bg="white")
-time_label.grid(row=3, column=0, sticky="w")
+# Details Frame
+details_frame = tk.Frame(body_frame, bg="white")
+details_frame.place(relx=0.5, rely=0.85, anchor="center")
+
+name_label = Label(details_frame, text="Name: -", font=("Sans", 16), bg="white")
+name_label.grid(row=0, column=0, padx=20, pady=5)
+
+id_label = Label(details_frame, text="ID: -", font=("Sans", 16), bg="white")
+id_label.grid(row=0, column=1, padx=20, pady=5)
+
+time_label = Label(details_frame, text="Timestamp: -", font=("Sans", 16), bg="white")
+time_label.grid(row=0, column=2, padx=20, pady=5)
+
+# Buttons
+exit_button = Button(root, text="Exit", command=root.quit, font=("Sans", 16), bg="black", fg="white", width=10)
+exit_button.place(relx=0.02, rely=0.95, anchor="sw")
+
+register_button = Button(root, text="Register New Face", font=("Sans", 16), bg="black", fg="white", width=15)
+register_button.place(relx=0.98, rely=0.95, anchor="se")
 
 # Start Video Capture
 cap = cv2.VideoCapture(0)
@@ -99,12 +131,12 @@ def update_frame():
             detected_id = known_face_names[best_match_index].split(" - ")[0]
             mark_attendance(detected_name, detected_id)
 
-    # Update UI dynamically
     name_label.config(text=f"Name: {detected_name}")
     id_label.config(text=f"ID: {detected_id}")
     time_label.config(text=f"Timestamp: {detected_time}")
 
     img = Image.fromarray(rgb_frame)
+    img = img.resize((640, 480))
     imgtk = ImageTk.PhotoImage(image=img)
     video_label.imgtk = imgtk
     video_label.configure(image=imgtk)
@@ -117,12 +149,12 @@ def register_user():
     register_window.title("Register New User")
     register_window.geometry("400x300")
 
-    Label(register_window, text="Enter ID:", font=("Arial", 12)).pack(pady=5)
-    id_entry = Entry(register_window, font=("Arial", 12))
+    tk.Label(register_window, text="Enter ID:", font=("Sans", 12)).pack(pady=5)
+    id_entry = Entry(register_window, font=("Sans", 12))
     id_entry.pack(pady=5)
 
-    Label(register_window, text="Enter Name:", font=("Arial", 12)).pack(pady=5)
-    name_entry = Entry(register_window, font=("Arial", 12))
+    tk.Label(register_window, text="Enter Name:", font=("Sans", 12)).pack(pady=5)
+    name_entry = Entry(register_window, font=("Sans", 12))
     name_entry.pack(pady=5)
 
     def capture_face():
@@ -153,18 +185,16 @@ def register_user():
         messagebox.showinfo("Success", "User registered successfully!")
         register_window.destroy()
 
-    Button(register_window, text="Capture & Register", command=capture_face, font=("Arial", 12)).pack(pady=10)
+    tk.Button(register_window, text="Capture & Register", command=capture_face, font=("Sans", 12), bg="black", fg="white").pack(pady=20)
 
-# Register Button
-register_button = Button(root, text="Register New Face", font=("Arial", 14), command=register_user, bg="green", fg="white")
-register_button.grid(row=4, column=1, padx=20, pady=10)
+register_button.config(command=register_user)
 
-# Start updating video feed
+# Start video feed
 update_frame()
 
 # Run the Tkinter app
 root.mainloop()
 
-# Release the camera when the window is closed
+# Release camera
 cap.release()
 cv2.destroyAllWindows()
